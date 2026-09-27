@@ -1,0 +1,230 @@
+// AngelsRadar MVP schema.
+// Note: this datasource is SQLite for local development. SQLite has no native
+// enum type, so status/category fields are typed String and validated in
+// application code (see src/lib/constants.ts) — this keeps the schema portable
+// to Postgres for production without a migration rewrite.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         String // founder | investor | admin
+  status       String   @default("active") // active | suspended
+  isSeedData   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  founderProfile      FounderProfile?
+  investorProfile     InvestorProfile?
+  passwordResetTokens PasswordResetToken[]
+  analyticsEvents     AnalyticsEvent[]
+
+  @@map("users")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+}
+
+model FounderProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  fullName  String
+  photo     String?
+  title     String? // founder role / title, e.g. "CEO & Co-founder"
+  linkedin  String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startup Startup?
+
+  @@map("founder_profiles")
+}
+
+model Startup {
+  id        String @id @default(cuid())
+  founderId String @unique
+
+  // Basic information
+  name         String
+  logo         String?
+  tagline      String
+  description  String
+  website      String?
+  country      String
+  city         String?
+  industry     String
+  foundedYear  Int?
+
+  // Business
+  problem            String?
+  solution           String?
+  businessModel      String?
+  targetMarket       String?
+  productDescription String?
+
+  // Funding
+  stage           String // pre_seed | seed | series_a | series_b_plus | other
+  amountRaising   Float?
+  currency        String  @default("USD")
+  previousFunding String?
+  fundingUse      String?
+
+  // Traction (kept intentionally simple / all optional)
+  revenue        String?
+  revenueRange   String?
+  customerCount  String?
+  growthInfo     String?
+  tractionNotes  String?
+
+  // Team
+  teamDescription String?
+
+  // Pitch deck (private — never served from a public path)
+  pitchDeckPath         String?
+  pitchDeckOriginalName String?
+
+  status      String   @default("draft") // draft | pending | approved | changes_requested | rejected
+  adminNote   String?
+  isSeedData  Boolean  @default(false)
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  founder              FounderProfile        @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  teamMembers          TeamMember[]
+  links                Link[]
+  introductionRequests IntroductionRequest[]
+
+  @@index([status])
+  @@index([industry])
+  @@index([country])
+  @@index([stage])
+  @@map("startups")
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  startupId String
+  name      String
+  role      String?
+  bio       String?
+  linkedin  String?
+  createdAt DateTime @default(now())
+
+  startup Startup @relation(fields: [startupId], references: [id], onDelete: Cascade)
+
+  @@map("team_members")
+}
+
+model Link {
+  id        String  @id @default(cuid())
+  startupId String
+  label     String
+  url       String
+
+  startup Startup @relation(fields: [startupId], references: [id], onDelete: Cascade)
+
+  @@map("links")
+}
+
+model InvestorProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  fullName         String
+  photo            String?
+  jobTitle         String?
+  organisation     String?
+  investorType     String // angel | vc | fund | syndicate | other
+  country          String
+  city             String?
+  linkedin         String?
+  website          String?
+  investmentThesis String?
+
+  status      String   @default("draft") // draft | pending | approved | changes_requested | rejected | suspended
+  adminNote   String?
+  isSeedData  Boolean  @default(false)
+  approvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferences          InvestorPreferences?
+  introductionRequests IntroductionRequest[]
+
+  @@index([status])
+  @@map("investor_profiles")
+}
+
+model InvestorPreferences {
+  id          String @id @default(cuid())
+  investorId  String @unique
+
+  // Stored as JSON arrays of string codes (see src/lib/constants.ts for the
+  // allowed vocab.) Kept as JSON rather than join tables per PRD section 33.
+  sectors     Json @default("[]")
+  countries   Json @default("[]")
+  stages      Json @default("[]")
+  ticketRanges Json @default("[]")
+
+  updatedAt DateTime @updatedAt
+
+  investor InvestorProfile @relation(fields: [investorId], references: [id], onDelete: Cascade)
+
+  @@map("investor_preferences")
+}
+
+model IntroductionRequest {
+  id           String   @id @default(cuid())
+  investorId   String
+  startupId    String
+  status       String   @default("new") // new | contacted | completed
+  investorNote String?
+  isSeedData   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  investor InvestorProfile @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  startup  Startup         @relation(fields: [startupId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([startupId])
+  @@index([investorId])
+  @@map("introduction_requests")
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  type      String // account_created | profile_completed | startup_submitted | startup_approved | investor_approved | startup_viewed | introduction_requested
+  userId    String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@map("analytics_events")
+}
