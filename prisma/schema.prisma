@@ -1,15 +1,15 @@
 // AngelsRadar MVP schema.
-// Note: this datasource is SQLite for local development. SQLite has no native
-// enum type, so status/category fields are typed String and validated in
-// application code (see src/lib/constants.ts) — this keeps the schema portable
-// to Postgres for production without a migration rewrite.
+// Note: status/category fields are typed String (not a Prisma enum) and
+// validated in application code (see src/lib/constants.ts) — this was
+// originally so the schema could run unchanged on SQLite in local dev;
+// kept now for the same vocab to stay enforced in one place.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

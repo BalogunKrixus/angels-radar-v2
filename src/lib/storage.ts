@@ -1,12 +1,27 @@
-import { mkdir, writeFile, unlink, stat } from "fs/promises";
+import { mkdir, writeFile, unlink, stat, readFile } from "fs/promises";
 import path from "path";
 import crypto from "crypto";
 
-// Uploaded files live outside /public so nothing is reachable by guessing a
-// URL — every read goes through an authorized route handler (see
-// src/app/api/files/**). This is what makes pitch decks actually private
-// rather than merely hidden from navigation.
+// Uploaded files are never reachable by guessing a URL — every read goes
+// through an authorized route handler (see src/app/api/files/**). This is
+// what makes pitch decks actually private rather than merely hidden from
+// navigation.
+//
+// Locally (no BLOB_READ_WRITE_TOKEN) files live on disk outside /public.
+// On Vercel, the filesystem is read-only at runtime, so uploads go to
+// Vercel Blob instead — selected automatically by the presence of that
+// token, no other code needs to know which backend is active.
+//
+// Either way, the value stored in the database (and used in the public
+// /api/files/<storagePath> URL) is always the same short "kind/name.ext"
+// key — never a full Blob URL — so the authorized route handler's path
+// matching and the DB lookups it does stay identical across backends.
+// BLOB_BASE_URL is the store's own public base (e.g.
+// https://<id>.public.blob.vercel-storage.com), used to turn that key
+// back into a fetchable URL.
 const UPLOAD_ROOT = path.join(process.cwd(), "uploads");
+const USE_BLOB = !!process.env.BLOB_READ_WRITE_TOKEN;
+const BLOB_BASE_URL = process.env.BLOB_BASE_URL?.replace(/\/$/, "");
 
 export type UploadKind = "logos" | "decks" | "avatars";
 
@@ -52,19 +67,41 @@ function extensionFor(file: File, kind: UploadKind): string {
   return map[file.type] ?? "";
 }
 
-/** Saves an uploaded file under a random, non-guessable name and returns its storage-relative path. */
+function blobUrlFor(storagePath: string): string {
+  if (!BLOB_BASE_URL) throw new UploadError("BLOB_BASE_URL is not configured");
+  return `${BLOB_BASE_URL}/${storagePath}`;
+}
+
+/** Saves an uploaded file under a random, non-guessable name and returns its storage key ("kind/name.ext" — resolved against disk or Blob depending on the environment). */
 export async function saveUpload(kind: UploadKind, ownerId: string, file: File): Promise<string> {
   validateUpload(kind, file);
+  const filename = `${ownerId}-${crypto.randomBytes(8).toString("hex")}${extensionFor(file, kind)}`;
+  const key = `${kind}/${filename}`;
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  if (USE_BLOB) {
+    const { put } = await import("@vercel/blob");
+    await put(key, buffer, {
+      access: "public",
+      addRandomSuffix: false,
+      contentType: file.type,
+    });
+    return key;
+  }
+
   const dir = path.join(UPLOAD_ROOT, kind);
   await mkdir(dir, { recursive: true });
-  const filename = `${ownerId}-${crypto.randomBytes(8).toString("hex")}${extensionFor(file, kind)}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(path.join(dir, filename), buffer);
-  return `${kind}/${filename}`;
+  return key;
 }
 
 export async function deleteUpload(storagePath: string) {
   try {
+    if (USE_BLOB) {
+      const { del } = await import("@vercel/blob");
+      await del(blobUrlFor(storagePath));
+      return;
+    }
     await unlink(path.join(UPLOAD_ROOT, storagePath));
   } catch {
     // Already gone — nothing to clean up.
@@ -72,10 +109,16 @@ export async function deleteUpload(storagePath: string) {
 }
 
 export async function readUpload(storagePath: string): Promise<{ buffer: Buffer; size: number }> {
+  if (USE_BLOB) {
+    const response = await fetch(blobUrlFor(storagePath));
+    if (!response.ok) throw new UploadError("Not found");
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return { buffer, size: buffer.length };
+  }
+
   const fullPath = path.join(UPLOAD_ROOT, storagePath);
   if (!fullPath.startsWith(UPLOAD_ROOT)) throw new UploadError("Invalid path");
   const info = await stat(fullPath);
-  const { readFile } = await import("fs/promises");
   const buffer = await readFile(fullPath);
   return { buffer, size: info.size };
 }
