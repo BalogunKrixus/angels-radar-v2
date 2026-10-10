@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { logoutAction } from "@/lib/actions/auth.actions";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { Logo } from "@/components/layout/Logo";
 
 export interface NavItem {
   href: string;
@@ -24,9 +25,7 @@ export function AppShell({
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-4">
-          <Link href="/" className="text-base font-semibold tracking-tight text-ink">
-            AngelsRadar
-          </Link>
+          <Logo />
           <nav className="order-3 flex w-full items-center gap-5 sm:order-none sm:w-auto">
             {primaryNav.map((item) => (
               <Link

@@ -60,7 +60,7 @@ export default async function InvestorDashboardPage({
           <div className="mt-5">
             <Link
               href="/investor/profile"
-              className="inline-flex items-center justify-center rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-ink/90"
+              className="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-dark"
             >
               {status === "draft" ? "Complete profile" : "View profile"}
             </Link>
@@ -177,7 +177,7 @@ function TabLink({ href, active, children }: { href: string; active: boolean; ch
       href={href}
       className={cn(
         "rounded-full border px-4 py-1.5 text-sm font-medium",
-        active ? "border-ink bg-ink text-white" : "border-border text-ink-soft hover:text-ink"
+        active ? "border-accent bg-accent text-white" : "border-border text-ink-soft hover:text-ink"
       )}
     >
       {children}

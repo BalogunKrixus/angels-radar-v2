@@ -55,7 +55,7 @@ export default async function AdminIntroductionsPage({
               href={tab.value ? `/admin/introductions?status=${tab.value}` : "/admin/introductions"}
               className={`rounded-full border px-3 py-1 text-sm ${
                 (status ?? "") === tab.value
-                  ? "border-ink bg-ink text-white"
+                  ? "border-accent bg-accent text-white"
                   : "border-border text-ink-soft hover:text-ink"
               }`}
             >
